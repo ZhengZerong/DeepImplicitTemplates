@@ -1,0 +1,17 @@
+.idea/
+bin/
+build/
+debug/
+__pycache__/
+third-party/
+.vscode/
+*.a
+*.so
+*.lib
+*.exe
+*.pth
+*.ply
+*.obj
+*.zip
+examples/
+deprecated/
