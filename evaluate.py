@@ -65,9 +65,16 @@ def evaluate_one_instance(dataset, class_name, instance_name, experiment_directo
         normalization_params["scale"],
     )
 
+    earthmover_dist = deep_sdf.metrics.emd.compute_trimesh_emd(
+        ground_truth_points,
+        reconstruction,
+        normalization_params["offset"],
+        normalization_params["scale"],
+    )
+
     logging.debug("chamfer distance: " + str(chamfer_dist))
 
-    return os.path.join(dataset, class_name, instance_name), chamfer_dist
+    return os.path.join(dataset, class_name, instance_name), chamfer_dist, earthmover_dist
 
 
 def evaluate(experiment_directory, checkpoint, data_dir, split_filename):
@@ -100,17 +107,18 @@ def evaluate(experiment_directory, checkpoint, data_dir, split_filename):
     print('multi thread start')
     chamfer_results = p.map(evaluate_one_instance, ds, cn, inn, exd, ckp, dtd)
     print(np.mean([q[1] for q in chamfer_results]), np.median([q[1] for q in chamfer_results]))
+    print(np.mean([q[2] for q in chamfer_results]), np.median([q[2] for q in chamfer_results]))
 
 
     with open(
         os.path.join(
-            ws.get_evaluation_dir(experiment_directory, checkpoint, True), "chamfer.csv"
+            ws.get_evaluation_dir(experiment_directory, checkpoint, True), "chamfer_and_emd.csv"
         ),
         "w",
     ) as f:
         f.write("shape, chamfer_dist\n")
         for result in chamfer_results:
-            f.write("{}, {}\n".format(result[0], result[1]))
+            f.write("{}, {}, {}\n".format(result[0], result[1], result[2]))
 
 
 if __name__ == "__main__":

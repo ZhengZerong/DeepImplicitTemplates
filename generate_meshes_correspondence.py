@@ -18,10 +18,12 @@ def save_to_ply(verts, verts_warped, faces, ply_filename_out):
     num_verts = verts.shape[0]
     num_faces = faces.shape[0]
 
+    # store canonical coordinates as rgb color (in float format)
     verts_color = 255 * (0.5 + 0.5 * verts_warped)
+    verts_color = verts_color.astype(np.uint8)
 
     verts_tuple = np.zeros(
-        (num_verts,), dtype=[("x", "f4"), ("y", "f4"), ("z", "f4"), ("red", "f4"), ("green", "f4"), ("blue", "f4")])
+        (num_verts,), dtype=[("x", "f4"), ("y", "f4"), ("z", "f4"), ("red", "u1"), ("green", "u1"), ("blue", "u1")])
 
     for i in range(0, num_verts):
         verts_tuple[i] = (verts[i][0], verts[i][1], verts[i][2],
@@ -99,20 +101,7 @@ def mesh_to_correspondence(experiment_directory, checkpoint, start_id, end_id):
     template_v = np.asarray(template_v)
     template_f = np.asarray(template_f)
 
-    max_xyz = np.max(template_v, axis=0)
-    min_xyz = np.min(template_v, axis=0)
-    s = 0.9 / (max_xyz - min_xyz)
-    t = (max_xyz + min_xyz) / 2.0
-
     save_to_ply(template_v, template_v, template_f, template_filename + "_color_coded.ply")
-
-    # with open(template_filename + "_color_coded.obj", "w") as fp:
-    #     for v in template_v:
-    #         # c = s * (v - t) + 0.5
-    #         c = 0.5 * v + 0.5
-    #         fp.write('v %f %f %f %f %f %f\n' % (v[0], v[1], v[2], c[0], c[1], c[2]))
-    #     for f in template_f:
-    #         fp.write('f %d %d %d\n' % (f[0]+1, f[1]+1, f[2]+1))
 
     for i, latent_vector in enumerate(latent_vectors):
         if i < start_id:
@@ -165,13 +154,6 @@ def mesh_to_correspondence(experiment_directory, checkpoint, start_id, end_id):
             warped = np.concatenate(warped, axis=0)
 
             save_to_ply(mesh_v, warped, mesh_f, mesh_filename + "_color_coded.ply")
-            # with open(mesh_filename + "_color_coded.obj", "w") as fp:
-            #     for v, vw in zip(mesh_v, warped):
-            #         # c = s * (vw - t) + 0.5
-            #         c = vw * 0.5 + 0.5
-            #         fp.write('v %f %f %f %f %f %f\n' % (v[0], v[1], v[2], c[0], c[1], c[2]))
-            #     for f in mesh_f:
-            #         fp.write('f %d %d %d\n' % (f[0] + 1, f[1] + 1, f[2] + 1))
 
         if i >= end_id:
             break

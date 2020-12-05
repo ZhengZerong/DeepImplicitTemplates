@@ -1,5 +1,6 @@
 .idea/
 bin/
+data/
 build/
 debug/
 __pycache__/
@@ -9,9 +10,11 @@ third-party/
 *.so
 *.lib
 *.exe
-*.pth
 *.ply
 *.obj
 *.zip
-examples/
+*.bk
+*.tar.gz
+examples/*/*/
 deprecated/
+Logs.pth

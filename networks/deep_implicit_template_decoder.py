@@ -117,6 +117,15 @@ def clip_grad_norm_hook(x, max_norm=10):
         return x * clip_coef
 
 
+def init_out_weights(self):
+    for m in self.modules():
+        for name, param in m.named_parameters():
+            if 'weight' in name:
+                nn.init.uniform_(param.data, -1e-5, 1e-5)
+            elif 'bias' in name:
+                nn.init.constant_(param.data, 0)
+
+
 class Warper(nn.Module):
     def __init__(
             self,
@@ -134,6 +143,7 @@ class Warper(nn.Module):
         lstm_forget_gate_init(self.lstm)
 
         self.out_layer_coord_affine = nn.Linear(hidden_size, 6)
+        self.out_layer_coord_affine.apply(init_out_weights)
 
     def forward(self, input, step=1.0):
         if step < 1.0:
@@ -162,7 +172,6 @@ class Warper(nn.Module):
             xyz_ = input_bk[:, -3:]
             xyz = xyz * step + xyz_ * (1 - step)
 
-        warping_param = torch.cat(warping_param, dim=0)
         return xyz, warping_param, warped_xyzs
 
 
@@ -191,8 +200,7 @@ class Decoder(nn.Module):
         else:   # training mode, output intermediate positions and their corresponding sdf prediction
             xs = []
             for p in warped_xyzs:
-                x = self.sdf_decoder(p)
-                xs.append(x)
+                xs.append(self.sdf_decoder(p))
             if output_warped_points:
                 if output_warping_param:
                     return warped_xyzs, xs, warping_param

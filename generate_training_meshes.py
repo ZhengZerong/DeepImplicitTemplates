@@ -46,7 +46,6 @@ def code_to_mesh(experiment_directory, checkpoint, start_id, end_id,
     if specs["NetworkArch"] == "deep_sdf_decoder":
         clamping_function = lambda x : torch.clamp(x, -specs["ClampingDistance"], specs["ClampingDistance"])
     elif specs["NetworkArch"] == "deep_implicit_template_decoder":
-        # clamping_function = lambda x: x * specs["ClampingDistance"]
         clamping_function = lambda x : torch.clamp(x, -specs["ClampingDistance"], specs["ClampingDistance"])
 
     latent_vectors = ws.load_pre_trained_latent_vectors(experiment_directory, checkpoint)
@@ -103,7 +102,6 @@ def code_to_mesh(experiment_directory, checkpoint, start_id, end_id,
         if use_octree:
             with torch.no_grad():
                 deep_sdf.mesh.create_mesh_octree(
-                    # lambda x: decoder(x) - 0.005,
                     decoder,
                     latent_vector,
                     mesh_filename,
@@ -116,7 +114,6 @@ def code_to_mesh(experiment_directory, checkpoint, start_id, end_id,
         else:
             with torch.no_grad():
                 deep_sdf.mesh.create_mesh(
-                    # lambda x: decoder(x) - 0.005,
                     decoder,
                     latent_vector,
                     mesh_filename,

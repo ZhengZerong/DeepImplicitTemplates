@@ -20,6 +20,7 @@ import deep_sdf.workspace as ws
 from deep_sdf.lr_schedule import get_learning_rate_schedules
 import deep_sdf.loss as loss
 
+
 def get_spec_with_default(specs, key, default):
     try:
         return specs[key]
@@ -40,7 +41,48 @@ def append_parameter_magnitudes(param_mag_log, model):
         param_mag_log[name].append(param.data.norm().item())
 
 
-def main_function(experiment_directory, continue_from, batch_split):
+def apply_curriculum_l1_loss(pred_sdf_list, sdf_gt, loss_l1_soft, num_sdf_samples):
+    soft_l1_eps_list = [2.5e-2, 1e-2, 2.5e-3, 0]
+    soft_l1_lamb_list = [0, 0.1, 0.2, 0.5]
+    sdf_loss = []
+    for k in range(len(pred_sdf_list)):
+        eps = soft_l1_eps_list[k]
+        lamb = soft_l1_lamb_list[k]
+        l = loss_l1_soft(pred_sdf_list[k], sdf_gt, eps=eps, lamb=lamb) / num_sdf_samples
+        # l = loss_l1(pred_sdf_list[k], sdf_gt[i].cuda()) / num_sdf_samples
+        sdf_loss.append(l)
+    sdf_loss = sum(sdf_loss) / len(sdf_loss)
+    return sdf_loss
+
+
+def apply_pointwise_reg(warped_xyz_list, xyz_, huber_fn, num_sdf_samples):
+    pw_loss = []
+    for k in range(len(warped_xyz_list)):
+        dist = torch.norm(warped_xyz_list[k] - xyz_, dim=-1)
+        pw_loss.append(huber_fn(dist, delta=0.25) / num_sdf_samples)
+        # pw_loss.append(torch.sum((warped_xyz_list[k] - xyz_) ** 2) / num_sdf_samples)
+    pw_loss = sum(pw_loss) / len(pw_loss)
+    return pw_loss
+
+
+def apply_pointpair_reg(warped_xyz_list, xyz_, loss_lp, scene_per_split, num_sdf_samples):
+    delta_xyz = warped_xyz_list[-1] - xyz_
+    xyz_reshaped = xyz_.view((scene_per_split, -1, 3))
+    delta_xyz_reshape = delta_xyz.view((scene_per_split, -1, 3))
+    k = xyz_reshaped.shape[1] // 8
+    lp_loss = torch.sum(loss_lp(
+        xyz_reshaped[:, :k].view(scene_per_split, -1, 1, 3),
+        xyz_reshaped[:, k:].view(scene_per_split, 1, -1, 3),
+        delta_xyz_reshape[:, :k].view(scene_per_split, -1, 1, 3),
+        delta_xyz_reshape[:, k:].view(scene_per_split, 1, -1, 3),
+    )) / num_sdf_samples
+    # lp_loss = torch.sum(
+    #     loss_sm(xyz_, delta_xyz)
+    # ) / num_sdf_samples
+    return lp_loss
+
+
+def main_function(experiment_directory, data_source, continue_from, batch_split):
 
     logging.info("running " + experiment_directory)
 
@@ -56,7 +98,7 @@ def main_function(experiment_directory, continue_from, batch_split):
 
     logging.info("Experiment description: \n" + specs["Description"])
 
-    data_source = specs["DataSource"]
+    # data_source = specs["DataSource"]
     train_split_file = specs["TrainSplit"]
 
     arch = __import__("networks." + specs["NetworkArch"], fromlist=["Decoder"])
@@ -146,7 +188,10 @@ def main_function(experiment_directory, continue_from, batch_split):
         data_source, train_split, num_samp_per_scene, load_ram=True
     )
 
-    num_data_loader_threads = get_spec_with_default(specs, "DataLoaderThreads", 1)
+    if sdf_dataset.load_ram:
+        num_data_loader_threads = 0
+    else:
+        num_data_loader_threads = get_spec_with_default(specs, "DataLoaderThreads", 1)
     logging.debug("loading data with {} threads".format(num_data_loader_threads))
 
     sdf_loader = data_utils.DataLoader(
@@ -178,15 +223,10 @@ def main_function(experiment_directory, continue_from, batch_split):
         )
     )
 
-    # loss_l1 = torch.nn.L1Loss(reduction="sum")
-    loss_l1 = loss.SoftL1Loss(reduction="sum")
+    loss_l1 = torch.nn.L1Loss(reduction="sum")
+    loss_l1_soft = loss.SoftL1Loss(reduction="sum")
     loss_lp = torch.nn.DataParallel(loss.LipschitzLoss(k=0.5, reduction="sum"))
-    # loss_sm = loss.SmoothnessLoss(reduction="sum", k=0.5)
-    # loss_cd = cd.ChamferDistanceLoss(reduction="sum").cuda()
     huber_fn = loss.HuberFunc(reduction="sum")
-
-    soft_l1_eps_list = [2.5e-2, 1e-2, 2.5e-3, 0]
-    soft_l1_lamb_list = [0, 0.1, 0.2, 0.5]
 
     optimizer_all = torch.optim.Adam(
         [
@@ -216,40 +256,44 @@ def main_function(experiment_directory, continue_from, batch_split):
     start_epoch = 1
 
     if continue_from is not None:
+        if not os.path.exists(os.path.join(experiment_directory, ws.latent_codes_subdir, continue_from + ".pth")) or \
+                not os.path.exists(os.path.join(experiment_directory, ws.model_params_subdir, continue_from + ".pth")) or \
+                not os.path.exists(os.path.join(experiment_directory, ws.optimizer_params_subdir, continue_from + ".pth")):
+            logging.warning('"{}" does not exist! Ignoring this argument...'.format(continue_from))
+        else:
+            logging.info('continuing from "{}"'.format(continue_from))
 
-        logging.info('continuing from "{}"'.format(continue_from))
-
-        lat_epoch = ws.load_latent_vectors(
-            experiment_directory, continue_from + ".pth", lat_vecs
-        )
-
-        model_epoch = ws.load_model_parameters(
-            experiment_directory, continue_from, decoder
-        )
-
-        optimizer_epoch = ws.load_optimizer(
-            experiment_directory, continue_from + ".pth", optimizer_all
-        )
-
-        loss_log, lr_log, timing_log, lat_mag_log, param_mag_log, log_epoch = ws.load_logs(
-            experiment_directory
-        )
-
-        if not log_epoch == model_epoch:
-            loss_log, lr_log, timing_log, lat_mag_log, param_mag_log = ws.clip_logs(
-                loss_log, lr_log, timing_log, lat_mag_log, param_mag_log, model_epoch
+            lat_epoch = ws.load_latent_vectors(
+                experiment_directory, continue_from + ".pth", lat_vecs
             )
 
-        if not (model_epoch == optimizer_epoch and model_epoch == lat_epoch):
-            raise RuntimeError(
-                "epoch mismatch: {} vs {} vs {} vs {}".format(
-                    model_epoch, optimizer_epoch, lat_epoch, log_epoch
+            model_epoch = ws.load_model_parameters(
+                experiment_directory, continue_from, decoder
+            )
+
+            optimizer_epoch = ws.load_optimizer(
+                experiment_directory, continue_from + ".pth", optimizer_all
+            )
+
+            loss_log, lr_log, timing_log, lat_mag_log, param_mag_log, log_epoch = ws.load_logs(
+                experiment_directory
+            )
+
+            if not log_epoch == model_epoch:
+                loss_log, lr_log, timing_log, lat_mag_log, param_mag_log = ws.clip_logs(
+                    loss_log, lr_log, timing_log, lat_mag_log, param_mag_log, model_epoch
                 )
-            )
 
-        start_epoch = model_epoch + 1
+            if not (model_epoch == optimizer_epoch and model_epoch == lat_epoch):
+                raise RuntimeError(
+                    "epoch mismatch: {} vs {} vs {} vs {}".format(
+                        model_epoch, optimizer_epoch, lat_epoch, log_epoch
+                    )
+                )
 
-        logging.debug("loaded")
+            start_epoch = model_epoch + 1
+
+            logging.debug("loaded")
 
     logging.info("starting from epoch {}".format(start_epoch))
 
@@ -266,17 +310,16 @@ def main_function(experiment_directory, continue_from, batch_split):
         )
     )
 
+    use_curriculum = get_spec_with_default(specs, "UseCurriculum", False)
+
     use_pointwise_loss = get_spec_with_default(specs, "UsePointwiseLoss", False)
     pointwise_loss_weight = get_spec_with_default(specs, "PointwiseLossWeight", 0.0)
 
     use_pointpair_loss = get_spec_with_default(specs, "UsePointpairLoss", False)
     pointpair_loss_weight = get_spec_with_default(specs, "PointpairLossWeight", 0.0)
 
-    use_chamfer_loss = get_spec_with_default(specs, "UseChamferLoss", False)
-    chamfer_loss_weight = get_spec_with_default(specs, "ChamferLossWeight", 0.0)
-
-    logging.info("pointwise_loss_weight = {}, pointpair_loss_weight = {}, chamfer_loss_weight = {}".format(
-        pointwise_loss_weight, pointpair_loss_weight, chamfer_loss_weight))
+    logging.info("pointwise_loss_weight = {}, pointpair_loss_weight = {}".format(
+        pointwise_loss_weight, pointpair_loss_weight))
 
     for epoch in range(start_epoch, num_epochs + 1):
 
@@ -314,7 +357,6 @@ def main_function(experiment_directory, continue_from, batch_split):
 
             batch_loss_sdf = 0.0
             batch_loss_pw = 0.0
-            batch_loss_is = 0.0
             batch_loss_reg = 0.0
             batch_loss_pp = 0.0
             batch_loss = 0.0
@@ -331,22 +373,17 @@ def main_function(experiment_directory, continue_from, batch_split):
                 # NN optimization
                 warped_xyz_list, pred_sdf_list, _ = decoder(
                     input, output_warped_points=True, output_warping_param=True)
-                # delta_xyz = warped_xyz - xyz_
 
                 if enforce_minmax:
                     # pred_sdf = pred_sdf * clamp_dist * 1.0
                     for k in range(len(pred_sdf_list)):
                         pred_sdf_list[k] = torch.clamp(pred_sdf_list[k], minT, maxT)
 
-                sdf_loss = []
-                for k in range(len(pred_sdf_list)):
-                    eps = soft_l1_eps_list[k]
-                    lamb = soft_l1_lamb_list[k]
-                    l = loss_l1(pred_sdf_list[k], sdf_gt[i].cuda(), eps=eps, lamb=lamb) / num_sdf_samples
-                    # l = loss_l1(pred_sdf_list[k], sdf_gt[i].cuda()) / num_sdf_samples
-                    sdf_loss.append(l)
-                sdf_loss = sum(sdf_loss) / len(sdf_loss)
-
+                if use_curriculum:
+                    sdf_loss = apply_curriculum_l1_loss(
+                        pred_sdf_list, sdf_gt[i].cuda(), loss_l1_soft, num_sdf_samples)
+                else:
+                    sdf_loss = loss_l1(pred_sdf_list[-1], sdf_gt[i].cuda()) / num_sdf_samples
                 batch_loss_sdf += sdf_loss.item()
                 chunk_loss = sdf_loss
 
@@ -357,30 +394,13 @@ def main_function(experiment_directory, continue_from, batch_split):
                     batch_loss_reg += reg_loss.item()
 
                 if use_pointwise_loss:
-                    pw_loss = []
-                    for k in range(len(warped_xyz_list)):
-                        dist = torch.norm(warped_xyz_list[k] - xyz_, dim=-1)
-                        pw_loss.append(huber_fn(dist, delta=0.25) / num_sdf_samples)
-                        #pw_loss.append(torch.sum((warped_xyz_list[k] - xyz_) ** 2) / num_sdf_samples)
-                    pw_loss = sum(pw_loss) / len(pw_loss)
+                    pw_loss = apply_pointwise_reg(
+                        warped_xyz_list, xyz_, huber_fn, num_sdf_samples)
                     batch_loss_pw += pw_loss.item()
                     chunk_loss = chunk_loss + pw_loss.cuda() * pointwise_loss_weight * max(1.0, 10.0 * (1 - epoch / 100))
 
                 if use_pointpair_loss:
-                    delta_xyz = warped_xyz_list[-1] - xyz_
-                    xyz_reshaped = xyz_.view((scene_per_split, -1, 3))
-                    delta_xyz_reshape = delta_xyz.view((scene_per_split, -1, 3))
-                    k = xyz_reshaped.shape[1] // 8
-                    lp_loss = torch.sum(loss_lp(
-                        xyz_reshaped[:, :k].view(scene_per_split, -1, 1, 3),
-                        xyz_reshaped[:, k:].view(scene_per_split, 1, -1, 3),
-                        delta_xyz_reshape[:, :k].view(scene_per_split, -1, 1, 3),
-                        delta_xyz_reshape[:, k:].view(scene_per_split, 1, -1, 3),
-                    )) / num_sdf_samples
-                    # lp_loss = torch.sum(
-                    #     loss_sm(xyz_, delta_xyz)
-                    # ) / num_sdf_samples
-
+                    lp_loss = apply_pointpair_reg(warped_xyz_list, xyz_, loss_lp, scene_per_split, num_sdf_samples)
                     batch_loss_pp += lp_loss.item()
                     chunk_loss += lp_loss.cuda() * pointpair_loss_weight * min(1.0, epoch / 100)
 
@@ -393,7 +413,7 @@ def main_function(experiment_directory, continue_from, batch_split):
             ws.save_tensorboard_logs(
                 tensorboard_saver, epoch*batch_num + bi,
                 loss_sdf=batch_loss_sdf, loss_pw=batch_loss_pw, loss_reg=batch_loss_reg,
-                loss_pp=batch_loss_pp, loss_is=batch_loss_is, loss_=batch_loss)
+                loss_pp=batch_loss_pp, loss_=batch_loss)
 
             loss_log.append(batch_loss)
 
@@ -402,6 +422,10 @@ def main_function(experiment_directory, continue_from, batch_split):
                 torch.nn.utils.clip_grad_norm_(decoder.parameters(), grad_clip)
 
             optimizer_all.step()
+
+            # release memory
+            del warped_xyz_list, pred_sdf_list, sdf_loss, pw_loss, \
+                lp_loss, batch_loss_sdf, batch_loss_reg, batch_loss_pp, batch_loss_pw, batch_loss, chunk_loss
 
         end = time.time()
 
@@ -449,6 +473,13 @@ if __name__ == "__main__":
         + "done in this directory as well.",
     )
     arg_parser.add_argument(
+        "--data",
+        "-d",
+        dest="data_source",
+        required=True,
+        help="The data source directory.",
+    )
+    arg_parser.add_argument(
         "--continue",
         "-c",
         dest="continue_from",
@@ -472,4 +503,4 @@ if __name__ == "__main__":
 
     deep_sdf.configure_logging(args)
 
-    main_function(args.experiment_directory, args.continue_from, int(args.batch_split))
+    main_function(args.experiment_directory, args.data_source, args.continue_from, int(args.batch_split))

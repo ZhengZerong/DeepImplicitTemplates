@@ -143,6 +143,30 @@ if __name__ == "__main__":
         default=10,
         help="random seed",
     )
+    arg_parser.add_argument(
+        "--resolution",
+        dest="resolution",
+        type=int,
+        default=256,
+        help="Marching cube resolution.",
+    )
+
+    use_octree_group = arg_parser.add_mutually_exclusive_group()
+    use_octree_group.add_argument(
+        '--octree',
+        dest='use_octree',
+        action='store_true',
+        help='Use octree to accelerate inference. Octree is recommend for most object categories '
+             'except those with thin structures like planes'
+    )
+    use_octree_group.add_argument(
+        '--no_octree',
+        dest='use_octree',
+        action='store_false',
+        help='Don\'t use octree to accelerate inference. Octree is recommend for most object categories '
+             'except those with thin structures like planes'
+    )
+
     deep_sdf.add_common_args(arg_parser)
 
     args = arg_parser.parse_args()
@@ -300,13 +324,15 @@ if __name__ == "__main__":
             if not save_latvec_only:
                 start = time.time()
                 with torch.no_grad():
-                    deep_sdf.mesh.create_mesh(
-                        decoder, latent, mesh_filename, N=256, max_batch=int(2 ** 17),
-                    )
-                    # deep_sdf.mesh.create_mesh_octree(
-                    #     decoder, latent, mesh_filename, N=256, max_batch=int(2 ** 17),
-                    #     clamp_func=clamping_function
-                    # )
+                    if args.use_octree:
+                        deep_sdf.mesh.create_mesh_octree(
+                            decoder, latent, mesh_filename, N=args.resolution, max_batch=int(2 ** 17),
+                            clamp_func=clamping_function
+                        )
+                    else:
+                        deep_sdf.mesh.create_mesh(
+                            decoder, latent, mesh_filename, N=args.resolution, max_batch=int(2 ** 17),
+                        )
                 logging.debug("total time: {}".format(time.time() - start))
 
             if not os.path.exists(os.path.dirname(latent_filename)):
