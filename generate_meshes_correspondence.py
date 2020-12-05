@@ -23,7 +23,7 @@ def save_to_ply(verts, verts_warped, faces, ply_filename_out):
     verts_color = verts_color.astype(np.uint8)
 
     verts_tuple = np.zeros(
-        (num_verts,), dtype=[("x", "f4"), ("y", "f4"), ("z", "f4"), ("red", "u1"), ("green", "u1"), ("blue", "u1")])
+        (num_verts,), dtype=[("x", "f4"), ("y", "f4"), ("z", "f4"), ("red", "f4"), ("green", "f4"), ("blue", "f4")])
 
     for i in range(0, num_verts):
         verts_tuple[i] = (verts[i][0], verts[i][1], verts[i][2],
