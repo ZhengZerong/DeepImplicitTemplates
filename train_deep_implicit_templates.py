@@ -394,13 +394,18 @@ def main_function(experiment_directory, data_source, continue_from, batch_split)
                     batch_loss_reg += reg_loss.item()
 
                 if use_pointwise_loss:
-                    pw_loss = apply_pointwise_reg(
-                        warped_xyz_list, xyz_, huber_fn, num_sdf_samples)
+                    if use_curriculum:
+                        pw_loss = apply_pointwise_reg(warped_xyz_list, xyz_, huber_fn, num_sdf_samples)
+                    else:
+                        pw_loss = apply_pointwise_reg(warped_xyz_list[-1:], xyz_, huber_fn, num_sdf_samples)
                     batch_loss_pw += pw_loss.item()
                     chunk_loss = chunk_loss + pw_loss.cuda() * pointwise_loss_weight * max(1.0, 10.0 * (1 - epoch / 100))
 
                 if use_pointpair_loss:
-                    lp_loss = apply_pointpair_reg(warped_xyz_list, xyz_, loss_lp, scene_per_split, num_sdf_samples)
+                    if use_curriculum:
+                        lp_loss = apply_pointpair_reg(warped_xyz_list, xyz_, loss_lp, scene_per_split, num_sdf_samples)
+                    else:
+                        lp_loss = apply_pointpair_reg(warped_xyz_list[-1:], xyz_, loss_lp, scene_per_split, num_sdf_samples)
                     batch_loss_pp += lp_loss.item()
                     chunk_loss += lp_loss.cuda() * pointpair_loss_weight * min(1.0, epoch / 100)
 
