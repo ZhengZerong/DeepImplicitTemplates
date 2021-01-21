@@ -160,7 +160,7 @@ class Warper(nn.Module):
             if state[0].requires_grad:
                 state[0].register_hook(lambda x: x.clamp(min=-10, max=10))
             a = self.out_layer_coord_affine(state[0])
-            tmp_xyz = xyz + a[:, :3] * xyz + a[:, 3:]
+            tmp_xyz = torch.addcmul(a[:, 3:], (1 + a[:, :3]), xyz)
 
             warping_param.append(a)
             states.append(state)
