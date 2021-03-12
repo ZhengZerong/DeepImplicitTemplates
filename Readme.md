@@ -33,7 +33,7 @@ primaryClass={cs.CV}
   
 ## Demo
 This repo contains pre-trained models for cars, chairs, airplanes and sofas. 
-After cloning the code repo, please run the following commands to generate the sofa template, 20 training sofa meshes with the color-coded canonical coordinates (i.e., the correspondences between the template and the meshes). 
+After cloning the code repo, please run the following commands to generate the sofa template as well as 20 training sofa meshes with the color-coded canonical coordinates (i.e., the correspondences between the template and the meshes). 
 ```bash
 GPU_ID=0
 CUDA_VISIBLE_DEVICES=${GPU_ID} python generate_template_mesh.py -e pretrained/sofas_dit --debug 
@@ -48,8 +48,6 @@ python render_correspondences.py  -i pretrained/sofas_dit/TrainingMeshes/2000/Sh
 ## Data Preparation
 
 Please follow original setting of [DeepSDF](https://github.com/facebookresearch/DeepSDF) to prepare the SDF data in ```./data``` folder.
-
-If you want to evaluate the correspondence accuracy, you need to download the KeypointNet data from [this link]() and extract it into ```./data``` folder.
 
 
 ## Traing and Evaluation
@@ -67,12 +65,6 @@ GPU_ID=0
 preprocessed_data_dir=./data
 CUDA_VISIBLE_DEVICES=${GPU_ID} python reconstruct_deep_implicit_templates.py -e examples/sofas_dit -c 2000 --split examples/splits/sv2_sofas_test.json -d ${preprocessed_data_dir} --skip --octree
 CUDA_VISIBLE_DEVICES=${GPU_ID} python evaluate.py -e examples/sofas_dit -c 2000 -s examples/splits/sv2_sofas_test.json -d ${preprocessed_data_dir} --debug
-```
-To evaluate the correspondence accuracy (Tab.3 in our paper), please run: 
-```bash
-GPU_ID=0
-preprocessed_data_dir=./data
-python ...
 ```
 
 Due the the randomness of the points sampled from the meshes, the numeric results will vary across multiple reruns of the same shape, 
