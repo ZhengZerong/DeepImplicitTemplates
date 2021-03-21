@@ -95,8 +95,6 @@ def evaluate(experiment_directory, checkpoint, data_dir, split_filename):
     for dataset in split:
         for class_name in split[dataset]:
             for iii, instance_name in enumerate(split[dataset][class_name]):
-                if iii >= 300:
-                    break
                 ds.append(dataset)
                 cn.append(class_name)
                 inn.append(instance_name)
@@ -108,7 +106,6 @@ def evaluate(experiment_directory, checkpoint, data_dir, split_filename):
     chamfer_results = p.map(evaluate_one_instance, ds, cn, inn, exd, ckp, dtd)
     print(np.mean([q[1] for q in chamfer_results]), np.median([q[1] for q in chamfer_results]))
     print(np.mean([q[2] for q in chamfer_results]), np.median([q[2] for q in chamfer_results]))
-
 
     with open(
         os.path.join(

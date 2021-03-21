@@ -17,7 +17,7 @@ class LipschitzLoss(nn.Module):
 
     def forward(self, x1, x2, y1, y2):
         l = self.relu(torch.norm(y1-y2, dim=-1) / (torch.norm(x1-x2, dim=-1)+1e-3) - self.k)
-        l = torch.clamp(l, 0.0, 5.0)    # avoid
+        # l = torch.clamp(l, 0.0, 5.0)    # avoid
         if self.reduction is None or self.reduction == "mean":
             return torch.mean(l)
         else:
