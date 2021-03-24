@@ -79,5 +79,4 @@ This code repo is heavily based on [DeepSDF](https://github.com/facebookresearch
 
 
 ## License
-
-DeepSDF is relased under the MIT License. See the [LICENSE file][5] for more details.
+MIT License
