@@ -31,7 +31,7 @@
     },
     {
       "Type" : "Step",
-      "Initial" : 0.001,
+      "Initial" : 0.0005,
       "Interval" : 500,
       "Factor" : 0.5
     },
@@ -43,7 +43,7 @@
     }],
   "SamplesPerScene" : 5000,
   "ScenesPerBatch" : 24,
-  "DataLoaderThreads" : 8,
+  "DataLoaderThreads" : 0,
   "ClampingDistance" : 0.1,
   "CodeRegularization" : true,
   "CodeRegularizationLambda" : 1e-4,
@@ -51,6 +51,6 @@
   "UsePointwiseLoss": true,
   "PointwiseLossWeight": 0.005,
   "UsePointpairLoss": true,
-  "PointpairLossWeight": 0.00002,
+  "PointpairLossWeight": 0.0001,
   "UseCurriculum": true
 }
