@@ -1,8 +1,8 @@
 {
-  "Description" : "This experiment learns a shape representation for planes using data from ShapeNet version 2.",
+  "Description" : "This experiment learns a shape representation for sofas using data from ShapeNet version 2.",
   "DataSource" : "../ShapeNet/DeepSDF",
-  "TrainSplit": "examples/splits/sv2_planes_train.json",
-  "TestSplit": "examples/splits/sv2_planes_test.json",
+  "TrainSplit": "examples/splits/sv2_sofas_train.json",
+  "TestSplit": "examples/splits/sv2_sofas_test.json",
   "NetworkArch" : "deep_implicit_template_decoder",
   "NetworkSpecs" : {
     "warper_kargs": {
@@ -31,7 +31,7 @@
     },
     {
       "Type" : "Step",
-      "Initial" : 0.001,
+      "Initial" : 0.0005,
       "Interval" : 500,
       "Factor" : 0.5
     },
@@ -43,7 +43,7 @@
     }],
   "SamplesPerScene" : 5000,
   "ScenesPerBatch" : 24,
-  "DataLoaderThreads" : 8,
+  "DataLoaderThreads" : 0,
   "ClampingDistance" : 0.1,
   "CodeRegularization" : true,
   "CodeRegularizationLambda" : 1e-4,
@@ -51,6 +51,6 @@
   "UsePointwiseLoss": true,
   "PointwiseLossWeight": 0.005,
   "UsePointpairLoss": true,
-  "PointpairLossWeight": 0.00002,
+  "PointpairLossWeight": 0.0001,
   "UseCurriculum": true
 }
