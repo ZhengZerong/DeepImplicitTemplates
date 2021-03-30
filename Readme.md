@@ -70,8 +70,6 @@ CUDA_VISIBLE_DEVICES=${GPU_ID} python evaluate.py -e examples/sofas_dit -c 2000 
 Due the the randomness of the points sampled from the meshes, the numeric results will vary across multiple reruns of the same shape, 
 and will likely differ from those produced in the paper. 
 
-More evaluation code is coming. 
-
 
 ## Acknowledgements
 This code repo is heavily based on [DeepSDF](https://github.com/facebookresearch/DeepSDF). We thank the authors for their great job!
