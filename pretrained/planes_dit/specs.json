@@ -1,8 +1,8 @@
 {
   "Description" : "This experiment learns a shape representation for sofas using data from ShapeNet version 2.",
   "DataSource" : "../ShapeNet/DeepSDF",
-  "TrainSplit": "examples/splits/sv2_sofas_train.json",
-  "TestSplit": "examples/splits/sv2_sofas_test.json",
+  "TrainSplit": "examples/splits/sv2_planes_train.json",
+  "TestSplit": "examples/splits/sv2_planes_test.json",
   "NetworkArch" : "deep_implicit_template_decoder",
   "NetworkSpecs" : {
     "warper_kargs": {
